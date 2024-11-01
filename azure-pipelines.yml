@@ -9,11 +9,41 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+stages:
+  - stage: Build
+    jobs: 
+    - job: 
+      steps:
+      - script: |
+          echo "Building..."
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  - stage: staging 
+    jobs:
+    - deployment: VmDeploy
+      displayName: WebDeploy
+      environment:
+        name: azure-boards
+        resourceType: VirtualMachine
+        tags: staging
+      strategy:
+       runOnce:
+        deploy:
+          steps:
+            - script: sudo mv /var/www/releases/current/siteconfig.conf /etc/nginx/sites-available/siteconfig; sudo ln -sf /etc/nginx/sites-available/siteconfig /etc/nginx/sites-enabled/siteconfig
+              displayName: Updating Nginx config
+  - stage: production
+    jobs:
+    - deployment: VmDeploy
+      displayName: WebDeploy
+      environment:
+        name: azure-boards
+        resourceType: VirtualMachine
+        tags: online
+      strategy:
+       runOnce:
+        deploy:
+          steps:
+            - script: |
+                ip=`az vm list-ip-addresses -g colin-rg -n $(hostname) --query "[].virtualMachine.network.privateIpAddresses[0]" -o tsv`
+                az network application-gateway address-pool update -g colin-rg --gateway-name regular-coral-load-balancer -n regular-coral-bep --servers $ip
+              displayName: Add load balancer entry
